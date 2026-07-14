@@ -1,4 +1,13 @@
 import json
+import ipaddress
+
+
+def _is_valid_ip(value):
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
 
 
 def format_results(origin_results, osint_results, cert_data=None):
@@ -86,6 +95,24 @@ def format_results(origin_results, osint_results, cert_data=None):
             lines.append(f"    IP: {c['ip']} ({c.get('cdn', 'Unknown CDN')})")
         lines.append("")
 
+    historical = origin_results.get("historical_records", [])
+    if historical:
+        lines.append("[+] HISTORICAL DNS RECORDS:")
+        by_ip = {}
+        for r in historical:
+            if not _is_valid_ip(r["ip"]):
+                continue
+            ip = r["ip"]
+            if ip not in by_ip:
+                by_ip[ip] = {"sources": set(), "hostnames": set()}
+            by_ip[ip]["sources"].add(r["source"])
+            by_ip[ip]["hostnames"].add(r["hostname"])
+        for ip, info in sorted(by_ip.items()):
+            sources = ", ".join(sorted(info["sources"]))
+            hostname = list(info["hostnames"])[0] if info["hostnames"] else ""
+            lines.append(f"    IP: {ip} ({hostname}) [{sources}]")
+        lines.append("")
+
     subdomains = origin_results.get("subdomains", {})
     if subdomains:
         lines.append("[+] DISCOVERED SUBDOMAINS:")
@@ -135,6 +162,16 @@ def format_results(origin_results, osint_results, cert_data=None):
                 lines.append(f"    - {t}")
             lines.append("")
 
+    port_scan = osint_results.get("port_scan", {})
+    if port_scan:
+        lines.append("[+] PORT SCAN RESULTS:")
+        for ip, ports in sorted(port_scan.items()):
+            lines.append(f"    {ip}:")
+            for p in ports:
+                banner_str = f" - {p['banner']}" if p.get("banner") else ""
+                lines.append(f"      Port {p['port']:>5}/{p['service']}{banner_str}")
+            lines.append("")
+
     lines.append("=" * 70)
     lines.append("  Scan Complete")
     lines.append("=" * 70)
@@ -148,10 +185,12 @@ def output_json(origin_results, osint_results, cert_data=None):
         "cdn_providers": osint_results.get("cdn", []) or origin_results.get("cdn_providers", []),
         "cname_chain": origin_results.get("cname_chain", []),
         "dns_records": osint_results.get("dns", {}),
+        "historical_dns_records": origin_results.get("historical_records", []),
         "origin_candidates": origin_results.get("origin_candidates", []),
         "subdomains": origin_results.get("subdomains", {}),
         "ssl_certificate": osint_results.get("ssl"),
         "http_response": osint_results.get("http"),
         "technologies": osint_results.get("technologies", []),
+        "port_scan": osint_results.get("port_scan", {}),
     }
     return json.dumps(output, indent=2, default=str)

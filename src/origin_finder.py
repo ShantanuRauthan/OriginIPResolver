@@ -3,6 +3,7 @@ from src.dns_utils import resolve_a, resolve_aaaa, resolve_cname, resolve_ns, re
 from src.crtsh import fetch_certificates, extract_subdomains, extract_ips_from_certificates
 from src.cdn_detector import detect_all as detect_cdn
 from src.subdomain_enum import enumerate_subdomains
+from src.historical_dns import extract_historical_ips
 from src.config import CDN_RANGES
 
 
@@ -18,13 +19,14 @@ def is_cdn_ip(ip):
     return None
 
 
-def find_origin_ips(domain, use_crtsh=True, use_subenum=True):
+def find_origin_ips(domain, use_crtsh=True, use_subenum=True, use_historical=True):
     results = {
         "domain": domain,
         "cdn_providers": [],
         "origin_candidates": [],
         "subdomains": {},
         "cname_chain": [],
+        "historical_records": [],
     }
 
     a_records = resolve_a(domain)
@@ -133,5 +135,30 @@ def find_origin_ips(domain, use_crtsh=True, use_subenum=True):
         if cdn_provider:
             entry["cdn"] = cdn_provider
         results["origin_candidates"].append(entry)
+
+    if use_historical:
+        try:
+            historical_records = extract_historical_ips(domain)
+            results["historical_records"] = historical_records
+            seen_historical_ips = set()
+            for r in historical_records:
+                ip = r["ip"]
+                try:
+                    ipaddress.ip_address(ip)
+                except ValueError:
+                    continue
+                if ip in seen_historical_ips:
+                    continue
+                seen_historical_ips.add(ip)
+                cdn_provider = is_cdn_ip(ip)
+                if not cdn_provider:
+                    results["origin_candidates"].append({
+                        "ip": ip,
+                        "source": f"historical_dns:{r['source']}",
+                        "hostname": r["hostname"],
+                        "confidence": "medium",
+                    })
+        except Exception:
+            pass
 
     return results, cert_data

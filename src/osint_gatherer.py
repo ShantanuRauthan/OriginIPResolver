@@ -1,9 +1,11 @@
 from src.dns_utils import resolve_a, resolve_aaaa, resolve_cname, resolve_ns, resolve_mx, resolve_txt, resolve_ptr
 from src.http_analyzer import fetch_headers, get_ssl_certificate, detect_technologies
 from src.cdn_detector import detect_all as detect_cdn
+from src.port_scanner import scan_ips
+from src.config import COMMON_SCAN_PORTS
 
 
-def gather_osint(domain, ssl=True):
+def gather_osint(domain, ssl=True, portscan=True, scan_ports=None, scan_ips_list=None):
     result = {
         "domain": domain,
         "dns": {},
@@ -11,6 +13,7 @@ def gather_osint(domain, ssl=True):
         "ssl": None,
         "technologies": [],
         "cdn": [],
+        "port_scan": {},
     }
 
     result["dns"]["a"] = resolve_a(domain)
@@ -46,5 +49,9 @@ def gather_osint(domain, ssl=True):
         ssl_info = get_ssl_certificate(domain)
         if ssl_info:
             result["ssl"] = ssl_info
+
+    if portscan and scan_ips_list:
+        ports_to_scan = scan_ports if scan_ports else COMMON_SCAN_PORTS
+        result["port_scan"] = scan_ips(scan_ips_list, ports=ports_to_scan)
 
     return result
