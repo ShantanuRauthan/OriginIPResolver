@@ -36,6 +36,8 @@ Examples:
   python main.py example.com --verbose --no-ssl
   python main.py example.com --ports 22,80,443,8080
   python main.py example.com --no-portscan
+  python main.py example.com --all-api
+  python main.py example.com --shodan --censys --virustotal
         """,
     )
     parser.add_argument("domain", help="Target domain or subdomain")
@@ -46,6 +48,14 @@ Examples:
     parser.add_argument("--no-historical", action="store_true", help="Skip historical DNS lookup")
     parser.add_argument("--no-portscan", action="store_true", help="Skip port scanning")
     parser.add_argument("--no-ssl", action="store_true", help="Skip SSL certificate analysis")
+    parser.add_argument("--no-wayback", action="store_true", help="Skip Wayback Machine lookup")
+    parser.add_argument("--no-doh", action="store_true", help="Skip DNS over HTTPS")
+    parser.add_argument("--no-zonetransfer", action="store_true", help="Skip DNS zone transfer attempt")
+    parser.add_argument("--shodan", action="store_true", help="Enable Shodan API lookups (requires SHODAN_API_KEY)")
+    parser.add_argument("--censys", action="store_true", help="Enable Censys API lookups (requires CENSYS_API_ID + CENSYS_API_SECRET)")
+    parser.add_argument("--securitytrails", action="store_true", help="Enable SecurityTrails API (requires SECURITYTRAILS_API_KEY)")
+    parser.add_argument("--virustotal", action="store_true", help="Enable VirusTotal API (requires VIRUSTOTAL_API_KEY)")
+    parser.add_argument("--all-api", action="store_true", help="Enable all API-based modules")
     parser.add_argument("--ports", help="Comma-separated ports or ranges to scan (e.g. 22,80,443,8000-8100)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     return parser.parse_args()
@@ -67,12 +77,32 @@ def main():
     print(f"[*] Target: {domain}", file=sys.stderr)
     print("[*] Resolving origin IP and gathering OSINT...\n", file=sys.stderr)
 
+    use_shodan = args.shodan or args.all_api
+    use_censys = args.censys or args.all_api
+    use_securitytrails = args.securitytrails or args.all_api
+    use_virustotal = args.virustotal or args.all_api
+
+    if use_shodan:
+        print("[*] Shodan API: enabled", file=sys.stderr)
+    if use_censys:
+        print("[*] Censys API: enabled", file=sys.stderr)
+    if use_securitytrails:
+        print("[*] SecurityTrails API: enabled", file=sys.stderr)
+    if use_virustotal:
+        print("[*] VirusTotal API: enabled", file=sys.stderr)
+    print("", file=sys.stderr)
+
     try:
         origin_results, cert_data = find_origin_ips(
             domain,
             use_crtsh=not args.no_crtsh,
             use_subenum=not args.no_subenum,
             use_historical=not args.no_historical,
+            use_wayback=not args.no_wayback,
+            use_doh=not args.no_doh,
+            use_zone_transfer=not args.no_zonetransfer,
+            use_securitytrails=use_securitytrails,
+            use_virustotal=use_virustotal,
         )
     except Exception as e:
         print(f"[!] Error during origin IP resolution: {e}", file=sys.stderr)
@@ -102,6 +132,9 @@ def main():
             portscan=not args.no_portscan,
             scan_ports=custom_ports,
             scan_ips_list=scan_ips_list if not args.no_portscan else None,
+            use_rdap=True,
+            use_shodan=use_shodan,
+            use_censys=use_censys,
         )
     except Exception as e:
         print(f"[!] Error during OSINT gathering: {e}", file=sys.stderr)

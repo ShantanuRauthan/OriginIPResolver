@@ -153,6 +153,24 @@ HISTORICAL_DNS_SOURCES = {
     "hackertarget": "https://api.hackertarget.com/hostsearch/?q={domain}",
 }
 
+DOH_PROVIDERS = {
+    "google": "https://dns.google/resolve",
+    "cloudflare": "https://cloudflare-dns.com/dns-query",
+}
+
+RDAP_URLS = {
+    "ip": "https://rdap.org/ip/{ip}",
+    "domain": "https://rdap.org/domain/{domain}",
+    "asn": "https://rdap.org/autnum/{asn}",
+}
+
+WAYBACK_CDX_URL = "https://web.archive.org/cdx/search/cdx"
+
+SECURITYTRAILS_BASE_URL = "https://api.securitytrails.com/v1"
+SHODAN_BASE_URL = "https://api.shodan.io"
+CENSYS_BASE_URL = "https://search.censys.io/api/v2"
+VIRUSTOTAL_BASE_URL = "https://www.virustotal.com/api/v3"
+
 SCAN_PORTS = [
     21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 161, 389, 443,
     445, 465, 500, 512, 513, 514, 523, 548, 587, 593, 623, 636, 993, 995,

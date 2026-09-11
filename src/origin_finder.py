@@ -19,7 +19,9 @@ def is_cdn_ip(ip):
     return None
 
 
-def find_origin_ips(domain, use_crtsh=True, use_subenum=True, use_historical=True):
+def find_origin_ips(domain, use_crtsh=True, use_subenum=True, use_historical=True,
+                    use_wayback=True, use_doh=True, use_zone_transfer=True,
+                    use_securitytrails=True, use_virustotal=True):
     results = {
         "domain": domain,
         "cdn_providers": [],
@@ -27,6 +29,11 @@ def find_origin_ips(domain, use_crtsh=True, use_subenum=True, use_historical=Tru
         "subdomains": {},
         "cname_chain": [],
         "historical_records": [],
+        "wayback_records": [],
+        "doh_records": {},
+        "zone_transfer": {},
+        "securitytrails_subdomains": [],
+        "virustotal_subdomains": [],
     }
 
     a_records = resolve_a(domain)
@@ -120,6 +127,113 @@ def find_origin_ips(domain, use_crtsh=True, use_subenum=True, use_historical=Tru
                         "cname": cnames[0],
                         "confidence": "low",
                     })
+        except Exception:
+            pass
+
+    if use_wayback:
+        try:
+            from src.wayback_machine import extract_historical_subdomains_from_wayback
+            wayback_subs = extract_historical_subdomains_from_wayback(domain)
+            results["wayback_records"] = wayback_subs
+            for sub in wayback_subs:
+                if sub not in results["subdomains"]:
+                    ips = resolve_a(sub)
+                    if ips:
+                        results["subdomains"][sub] = {"ips": ips, "cname": None}
+                        for ip in ips:
+                            cdn_provider = is_cdn_ip(ip)
+                            results["origin_candidates"].append({
+                                "ip": ip,
+                                "source": f"wayback_machine:{sub}",
+                                "hostname": sub,
+                                "confidence": "high" if not cdn_provider else "low",
+                            })
+        except Exception:
+            pass
+
+    if use_doh:
+        try:
+            from src.doh_resolver import resolve_all_doh
+            doh_results = resolve_all_doh(domain)
+            results["doh_records"] = doh_results
+            for rtype, providers in doh_results.items():
+                for provider, answers in providers.items():
+                    if rtype == "A":
+                        for ip in answers:
+                            if ip not in all_resolved_ips:
+                                all_resolved_ips.append(ip)
+                                cdn_provider = is_cdn_ip(ip)
+                                results["origin_candidates"].append({
+                                    "ip": ip,
+                                    "source": f"doh:{provider}",
+                                    "hostname": domain,
+                                    "confidence": "high" if not cdn_provider else "medium",
+                                })
+        except Exception:
+            pass
+
+    if use_zone_transfer:
+        try:
+            from src.dns_zone_transfer import attempt_zone_transfer, extract_ips_from_zone, extract_subdomains_from_zone
+            zone_results = attempt_zone_transfer(domain)
+            results["zone_transfer"] = zone_results
+            zone_ips = extract_ips_from_zone(zone_results)
+            zone_subs = extract_subdomains_from_zone(zone_results, domain)
+            for ip in zone_ips:
+                cdn_provider = is_cdn_ip(ip)
+                results["origin_candidates"].append({
+                    "ip": ip,
+                    "source": "zone_transfer",
+                    "hostname": domain,
+                    "confidence": "high" if not cdn_provider else "low",
+                })
+            for sub in zone_subs:
+                if sub not in results["subdomains"]:
+                    ips = resolve_a(sub)
+                    if ips:
+                        results["subdomains"][sub] = {"ips": ips, "cname": None}
+        except Exception:
+            pass
+
+    if use_securitytrails:
+        try:
+            from src.securitytrails import get_subdomains
+            st_subs = get_subdomains(domain)
+            results["securitytrails_subdomains"] = st_subs
+            for sub in st_subs:
+                if sub not in results["subdomains"]:
+                    ips = resolve_a(sub)
+                    if ips:
+                        results["subdomains"][sub] = {"ips": ips, "cname": None}
+                        for ip in ips:
+                            cdn_provider = is_cdn_ip(ip)
+                            results["origin_candidates"].append({
+                                "ip": ip,
+                                "source": f"securitytrails:{sub}",
+                                "hostname": sub,
+                                "confidence": "high" if not cdn_provider else "low",
+                            })
+        except Exception:
+            pass
+
+    if use_virustotal:
+        try:
+            from src.virustotal import get_subdomains
+            vt_subs = get_subdomains(domain)
+            results["virustotal_subdomains"] = vt_subs
+            for sub in vt_subs:
+                if sub not in results["subdomains"]:
+                    ips = resolve_a(sub)
+                    if ips:
+                        results["subdomains"][sub] = {"ips": ips, "cname": None}
+                        for ip in ips:
+                            cdn_provider = is_cdn_ip(ip)
+                            results["origin_candidates"].append({
+                                "ip": ip,
+                                "source": f"virustotal:{sub}",
+                                "hostname": sub,
+                                "confidence": "high" if not cdn_provider else "low",
+                            })
         except Exception:
             pass
 

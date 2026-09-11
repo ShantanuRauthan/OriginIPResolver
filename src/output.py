@@ -30,7 +30,7 @@ def format_results(origin_results, osint_results, cert_data=None):
     if len(cname_chain) > 1:
         lines.append("[+] CNAME CHAIN:")
         for i, cname in enumerate(cname_chain):
-            prefix = " └─ " if i == len(cname_chain) - 1 else " ├─ "
+            prefix = " \u2514\u2500 " if i == len(cname_chain) - 1 else " \u251c\u2500 "
             lines.append(f"    {prefix}{cname}")
         lines.append("")
 
@@ -57,6 +57,19 @@ def format_results(origin_results, osint_results, cert_data=None):
             for h in hostnames:
                 lines.append(f"      - {ip} -> {h}")
     lines.append("")
+
+    doh = origin_results.get("doh_records", {})
+    if doh:
+        lines.append("[+] DNS OVER HTTPS (Cross-validation):")
+        for rtype, providers in doh.items():
+            lines.append(f"    {rtype}:")
+            for provider, answers in providers.items():
+                for ans in answers:
+                    if isinstance(ans, tuple):
+                        lines.append(f"      - {ans[0]} (via {provider})")
+                    else:
+                        lines.append(f"      - {ans} (via {provider})")
+        lines.append("")
 
     origin_candidates = origin_results.get("origin_candidates", [])
     non_cdn_origins = [c for c in origin_candidates if not c.get("cdn")]
@@ -113,6 +126,45 @@ def format_results(origin_results, osint_results, cert_data=None):
             lines.append(f"    IP: {ip} ({hostname}) [{sources}]")
         lines.append("")
 
+    wayback = origin_results.get("wayback_records", [])
+    if wayback:
+        lines.append("[+] WAYBACK MACHINE SUBDOMAINS:")
+        for sub in wayback[:30]:
+            lines.append(f"    {sub}")
+        if len(wayback) > 30:
+            lines.append(f"    ... and {len(wayback) - 30} more")
+        lines.append("")
+
+    zone_transfer = origin_results.get("zone_transfer", {})
+    if zone_transfer.get("zone_transfer_allowed"):
+        lines.append("[!] ZONE TRANSFER SUCCESSFUL:")
+        for record in zone_transfer.get("records", [])[:20]:
+            lines.append(f"    {record['name']}.{origin_results['domain']} -> {record['type']}: {record['data']}")
+        lines.append("")
+    elif zone_transfer.get("errors"):
+        lines.append("[+] ZONE TRANSFER:")
+        for err in zone_transfer.get("errors", []):
+            lines.append(f"    {err}")
+        lines.append("")
+
+    securitytrails_subs = origin_results.get("securitytrails_subdomains", [])
+    virustotal_subs = origin_results.get("virustotal_subdomains", [])
+    if securitytrails_subs or virustotal_subs:
+        lines.append("[+] API SUBDOMAIN DISCOVERY:")
+        if securitytrails_subs:
+            lines.append(f"    SecurityTrails: {len(securitytrails_subs)} subdomains found")
+            for sub in securitytrails_subs[:10]:
+                lines.append(f"      - {sub}")
+            if len(securitytrails_subs) > 10:
+                lines.append(f"      ... and {len(securitytrails_subs) - 10} more")
+        if virustotal_subs:
+            lines.append(f"    VirusTotal: {len(virustotal_subs)} subdomains found")
+            for sub in virustotal_subs[:10]:
+                lines.append(f"      - {sub}")
+            if len(virustotal_subs) > 10:
+                lines.append(f"      ... and {len(virustotal_subs) - 10} more")
+        lines.append("")
+
     subdomains = origin_results.get("subdomains", {})
     if subdomains:
         lines.append("[+] DISCOVERED SUBDOMAINS:")
@@ -162,6 +214,61 @@ def format_results(origin_results, osint_results, cert_data=None):
                 lines.append(f"    - {t}")
             lines.append("")
 
+    rdap = osint_results.get("rdap", {})
+    if rdap:
+        lines.append("[+] RDAP / IP REGISTRY INFO:")
+        for ip, info in sorted(rdap.items()):
+            lines.append(f"    {ip}:")
+            lines.append(f"      Owner: {info.get('name', 'N/A')}")
+            lines.append(f"      Handle: {info.get('handle', 'N/A')}")
+            lines.append(f"      CIDR: {info.get('cidr', 'N/A')}")
+            lines.append(f"      Description: {info.get('description', 'N/A')}")
+        lines.append("")
+
+    shodan = osint_results.get("shodan", {})
+    if shodan:
+        lines.append("[+] SHODAN INTEL:")
+        for ip, info in sorted(shodan.items()):
+            lines.append(f"    {ip}:")
+            lines.append(f"      Org: {info.get('org', 'N/A')}")
+            lines.append(f"      ISP: {info.get('isp', 'N/A')}")
+            lines.append(f"      OS: {info.get('os', 'N/A')}")
+            lines.append(f"      Country: {info.get('country', 'N/A')}")
+            open_ports = info.get("ports", [])
+            if open_ports:
+                lines.append(f"      Ports: {', '.join(map(str, open_ports[:20]))}")
+            for svc in info.get("services", [])[:5]:
+                product = svc.get("product", "")
+                version = svc.get("version", "")
+                banner = svc.get("banner", "")[:80]
+                port = svc.get("port", "")
+                svc_str = f"Port {port}: {product} {version}".strip()
+                if banner:
+                    svc_str += f" - {banner}"
+                lines.append(f"        {svc_str}")
+            vulns = info.get("vulns", [])
+            if vulns:
+                lines.append(f"      Vulns: {', '.join(vulns[:5])}")
+        lines.append("")
+
+    censys = osint_results.get("censys", [])
+    if censys:
+        lines.append("[+] CENSYS DATA:")
+        for host in censys:
+            ip = host.get("ip", "")
+            lines.append(f"    {ip}:")
+            as_info = host.get("autonomous_system", {})
+            if as_info.get("asn"):
+                lines.append(f"      ASN: {as_info.get('asn')} ({as_info.get('name', '')})")
+            loc = host.get("location", {})
+            if loc.get("country"):
+                lines.append(f"      Location: {loc.get('city', '')}, {loc.get('country', '')}")
+            for svc in host.get("services", [])[:5]:
+                lines.append(f"      Port {svc.get('port')}: {svc.get('service_name', '')} ({svc.get('transport_protocol', '')})")
+            if host.get("operating_system"):
+                lines.append(f"      OS: {host.get('operating_system')}")
+        lines.append("")
+
     port_scan = osint_results.get("port_scan", {})
     if port_scan:
         lines.append("[+] PORT SCAN RESULTS:")
@@ -185,12 +292,20 @@ def output_json(origin_results, osint_results, cert_data=None):
         "cdn_providers": osint_results.get("cdn", []) or origin_results.get("cdn_providers", []),
         "cname_chain": origin_results.get("cname_chain", []),
         "dns_records": osint_results.get("dns", {}),
+        "doh_records": origin_results.get("doh_records", {}),
         "historical_dns_records": origin_results.get("historical_records", []),
         "origin_candidates": origin_results.get("origin_candidates", []),
         "subdomains": origin_results.get("subdomains", {}),
+        "wayback_subdomains": origin_results.get("wayback_records", []),
+        "zone_transfer": origin_results.get("zone_transfer", {}),
+        "securitytrails_subdomains": origin_results.get("securitytrails_subdomains", []),
+        "virustotal_subdomains": origin_results.get("virustotal_subdomains", []),
         "ssl_certificate": osint_results.get("ssl"),
         "http_response": osint_results.get("http"),
         "technologies": osint_results.get("technologies", []),
+        "rdap": osint_results.get("rdap", {}),
+        "shodan": osint_results.get("shodan", {}),
+        "censys": osint_results.get("censys", []),
         "port_scan": osint_results.get("port_scan", {}),
     }
     return json.dumps(output, indent=2, default=str)

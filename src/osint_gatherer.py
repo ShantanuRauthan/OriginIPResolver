@@ -5,7 +5,8 @@ from src.port_scanner import scan_ips
 from src.config import COMMON_SCAN_PORTS
 
 
-def gather_osint(domain, ssl=True, portscan=True, scan_ports=None, scan_ips_list=None):
+def gather_osint(domain, ssl=True, portscan=True, scan_ports=None, scan_ips_list=None,
+                 use_rdap=True, use_shodan=True, use_censys=True):
     result = {
         "domain": domain,
         "dns": {},
@@ -14,6 +15,9 @@ def gather_osint(domain, ssl=True, portscan=True, scan_ports=None, scan_ips_list
         "technologies": [],
         "cdn": [],
         "port_scan": {},
+        "rdap": {},
+        "shodan": {},
+        "censys": [],
     }
 
     result["dns"]["a"] = resolve_a(domain)
@@ -49,6 +53,33 @@ def gather_osint(domain, ssl=True, portscan=True, scan_ports=None, scan_ips_list
         ssl_info = get_ssl_certificate(domain)
         if ssl_info:
             result["ssl"] = ssl_info
+
+    if use_rdap and scan_ips_list:
+        try:
+            from src.rdap_lookup import batch_lookup_ips
+            result["rdap"] = batch_lookup_ips(scan_ips_list)
+        except Exception:
+            pass
+
+    if use_shodan and scan_ips_list:
+        try:
+            from src.shodan_lookup import search_host
+            for ip in scan_ips_list[:10]:
+                shodan_info = search_host(ip)
+                if shodan_info:
+                    result["shodan"][ip] = shodan_info
+        except Exception:
+            pass
+
+    if use_censys and scan_ips_list:
+        try:
+            from src.censys_lookup import get_host_details
+            for ip in scan_ips_list[:10]:
+                censys_info = get_host_details(ip)
+                if censys_info:
+                    result["censys"].append(censys_info)
+        except Exception:
+            pass
 
     if portscan and scan_ips_list:
         ports_to_scan = scan_ports if scan_ports else COMMON_SCAN_PORTS
